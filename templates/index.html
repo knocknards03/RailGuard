@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RailGuard AI — Threat Detection Dashboard</title>
+
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Dashboard CSS -->
+  <link rel="stylesheet" href="/static/css/dashboard.css" />
+</head>
+
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TOP NAV BAR
+═══════════════════════════════════════════════════════════════════════════ -->
+<header class="topbar">
+  <div class="topbar__brand">
+    <div class="topbar__logo">
+      <i class="fa-solid fa-train-subway"></i>
+    </div>
+    <div class="topbar__title">
+      <span class="topbar__title--main">RailGuard AI</span>
+      <span class="topbar__title--sub">Threat Detection System</span>
+    </div>
+  </div>
+
+  <div class="topbar__meta">
+    <div class="topbar__station">
+      <i class="fa-solid fa-location-dot"></i>
+      <span id="meta-station">New Delhi Railway Station</span>
+    </div>
+    <div class="topbar__cam">
+      <i class="fa-solid fa-video"></i>
+      <span id="meta-camera">CAM-04</span>
+    </div>
+    <div class="topbar__time" id="topbar-clock"></div>
+  </div>
+
+  <div class="topbar__status">
+    <span class="status-badge status-badge--live" id="engine-status">
+      <span class="pulse-dot"></span> LIVE
+    </span>
+    <span class="topbar__fps"><span id="fps-val">0</span> fps</span>
+  </div>
+</header>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ALERT BANNER (shown when CRITICAL alert fires)
+═══════════════════════════════════════════════════════════════════════════ -->
+<div class="alert-banner" id="alert-banner" aria-live="assertive" role="alert">
+  <i class="fa-solid fa-triangle-exclamation"></i>
+  <span id="alert-banner-text">CRITICAL: Unattended baggage detected — Platform 4, Coach B3</span>
+  <button class="alert-banner__close" onclick="dismissBanner()" aria-label="Dismiss">
+    <i class="fa-solid fa-xmark"></i>
+  </button>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     STAT CARDS ROW
+═══════════════════════════════════════════════════════════════════════════ -->
+<section class="stats-row" aria-label="Summary statistics">
+
+  <div class="stat-card stat-card--neutral">
+    <div class="stat-card__icon"><i class="fa-solid fa-boxes-stacked"></i></div>
+    <div class="stat-card__body">
+      <div class="stat-card__value" id="stat-total-objects">0</div>
+      <div class="stat-card__label">Tracked Objects</div>
+    </div>
+  </div>
+
+  <div class="stat-card stat-card--warn">
+    <div class="stat-card__icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
+    <div class="stat-card__body">
+      <div class="stat-card__value" id="stat-warning">0</div>
+      <div class="stat-card__label">Warning (3–10 min)</div>
+    </div>
+  </div>
+
+  <div class="stat-card stat-card--critical">
+    <div class="stat-card__icon"><i class="fa-solid fa-radiation"></i></div>
+    <div class="stat-card__body">
+      <div class="stat-card__value" id="stat-critical">0</div>
+      <div class="stat-card__label">Critical (&gt;10 min)</div>
+    </div>
+  </div>
+
+  <div class="stat-card stat-card--alert">
+    <div class="stat-card__icon"><i class="fa-solid fa-bell"></i></div>
+    <div class="stat-card__body">
+      <div class="stat-card__value" id="stat-alerts">0</div>
+      <div class="stat-card__label">Total Alerts</div>
+    </div>
+  </div>
+
+  <div class="stat-card stat-card--raman">
+    <div class="stat-card__icon"><i class="fa-solid fa-flask-vial"></i></div>
+    <div class="stat-card__body">
+      <div class="stat-card__value" id="stat-raman-scans">0</div>
+      <div class="stat-card__label">Raman Scans</div>
+    </div>
+  </div>
+
+  <div class="stat-card stat-card--threat">
+    <div class="stat-card__icon"><i class="fa-solid fa-biohazard"></i></div>
+    <div class="stat-card__body">
+      <div class="stat-card__value" id="stat-threats">0</div>
+      <div class="stat-card__label">Threats Detected</div>
+    </div>
+  </div>
+
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     MAIN GRID
+═══════════════════════════════════════════════════════════════════════════ -->
+<main class="main-grid">
+
+  <!-- ── LEFT: Video feed ─────────────────────────────────────────── -->
+  <section class="panel panel--video" aria-label="Live camera feed">
+    <div class="panel__header">
+      <span class="panel__title">
+        <i class="fa-solid fa-video"></i> Live Camera Feed
+      </span>
+      <div class="panel__controls">
+        <span class="tag tag--platform" id="feed-location">Platform 4 · Coach B3</span>
+        <button class="icon-btn" id="fullscreen-btn" title="Fullscreen" aria-label="Toggle fullscreen">
+          <i class="fa-solid fa-expand"></i>
+        </button>
+      </div>
+    </div>
+    <div class="video-wrapper" id="video-wrapper">
+      <img id="video-feed"
+           src="/video_feed"
+           alt="Live detection feed"
+           class="video-feed"
+           loading="lazy" />
+      <div class="video-overlay__corner video-overlay__corner--tl">
+        <span class="overlay-label">CCTV · <span id="ov-cam">CAM-04</span></span>
+      </div>
+      <div class="video-overlay__corner video-overlay__corner--tr">
+        <span class="overlay-label rec"><span class="rec-dot"></span>REC</span>
+      </div>
+      <div class="video-overlay__corner video-overlay__corner--bl">
+        <span class="overlay-label" id="ov-station">New Delhi Rly. Station</span>
+      </div>
+      <div class="video-overlay__corner video-overlay__corner--br">
+        <span class="overlay-label" id="ov-time"></span>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="video-legend">
+      <span class="legend-item legend-item--normal"><span class="legend-dot"></span>Normal</span>
+      <span class="legend-item legend-item--warn"><span class="legend-dot"></span>Warning ≥3 min</span>
+      <span class="legend-item legend-item--critical"><span class="legend-dot"></span>Critical ≥10 min</span>
+    </div>
+  </section>
+
+
+  <!-- ── CENTRE: Active threats + Raman panel ─────────────────────── -->
+  <section class="panel panel--threats" aria-label="Active threat objects">
+    <div class="panel__header">
+      <span class="panel__title">
+        <i class="fa-solid fa-crosshairs"></i> Active Tracked Objects
+      </span>
+      <span class="badge" id="tracked-count-badge">0 objects</span>
+    </div>
+    <div class="threat-list" id="threat-list">
+      <div class="empty-state" id="threat-empty">
+        <i class="fa-solid fa-shield-halved"></i>
+        <p>No suspicious objects detected</p>
+      </div>
+    </div>
+
+    <!-- Raman spectrometer panel -->
+    <div class="panel__divider">
+      <span><i class="fa-solid fa-flask-vial"></i> Raman Spectrometer</span>
+    </div>
+
+    <div class="raman-panel">
+      <div class="raman-panel__latest" id="raman-latest">
+        <div class="raman-result raman-result--clear" id="raman-result-card">
+          <div class="raman-result__header">
+            <span class="raman-result__substance" id="raman-substance">Awaiting scan…</span>
+            <span class="raman-result__badge" id="raman-badge">—</span>
+          </div>
+          <div class="raman-result__meta">
+            <span><i class="fa-solid fa-chart-simple"></i> SNR: <b id="raman-snr">—</b> dB</span>
+            <span><i class="fa-solid fa-percent"></i> Conf: <b id="raman-conf">—</b></span>
+            <span><i class="fa-solid fa-clock"></i> <b id="raman-time">—</b></span>
+          </div>
+          <div class="raman-result__desc" id="raman-desc">Raman scan will trigger automatically when a suspicious object is detected.</div>
+          <div class="raman-peaks" id="raman-peaks"></div>
+        </div>
+      </div>
+
+      <!-- Demo: force scan buttons -->
+      <div class="raman-demo">
+        <span class="raman-demo__label">Simulate scan:</span>
+        <div class="raman-demo__btns">
+          <button class="demo-btn demo-btn--explosive" onclick="forceScan('RDX')">RDX</button>
+          <button class="demo-btn demo-btn--explosive" onclick="forceScan('TNT')">TNT</button>
+          <button class="demo-btn demo-btn--narcotic"  onclick="forceScan('Heroin')">Heroin</button>
+          <button class="demo-btn demo-btn--narcotic"  onclick="forceScan('Cocaine')">Cocaine</button>
+          <button class="demo-btn demo-btn--clear"     onclick="forceScan('Clean')">Clear</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ── RIGHT: Alert log ──────────────────────────────────────────── -->
+  <section class="panel panel--alerts" aria-label="Alert log">
+    <div class="panel__header">
+      <span class="panel__title">
+        <i class="fa-solid fa-triangle-exclamation"></i> Alert Log
+      </span>
+      <div class="panel__controls">
+        <select class="filter-select" id="alert-filter" aria-label="Filter alerts">
+          <option value="ALL">All</option>
+          <option value="CRITICAL">Critical</option>
+          <option value="WARNING">Warning</option>
+          <option value="UNACKED">Unacknowledged</option>
+        </select>
+      </div>
+    </div>
+    <div class="alert-log" id="alert-log">
+      <div class="empty-state" id="alert-empty">
+        <i class="fa-solid fa-bell-slash"></i>
+        <p>No alerts raised yet</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     BOTTOM ROW: Charts
+═══════════════════════════════════════════════════════════════════════════ -->
+<section class="charts-row" aria-label="Analytics charts">
+
+  <div class="chart-card">
+    <div class="chart-card__header">
+      <span><i class="fa-solid fa-wave-square"></i> Object Activity Timeline</span>
+    </div>
+    <div class="chart-card__body">
+      <canvas id="activity-chart" aria-label="Object activity over time"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-card__header">
+      <span><i class="fa-solid fa-flask-vial"></i> Raman Scan History</span>
+    </div>
+    <div class="chart-card__body">
+      <canvas id="raman-chart" aria-label="Raman scan results over time"></canvas>
+    </div>
+  </div>
+
+  <div class="chart-card chart-card--donut">
+    <div class="chart-card__header">
+      <span><i class="fa-solid fa-chart-pie"></i> Threat Breakdown</span>
+    </div>
+    <div class="chart-card__body chart-card__body--center">
+      <canvas id="threat-donut" aria-label="Threat category breakdown"></canvas>
+    </div>
+  </div>
+
+</section>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     RPF ALERT MODAL
+═══════════════════════════════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="rpf-modal-backdrop" role="dialog"
+     aria-modal="true" aria-labelledby="modal-title" hidden>
+  <div class="modal" id="rpf-modal">
+
+    <div class="modal__header">
+      <div class="modal__header-icon">
+        <i class="fa-solid fa-shield-halved"></i>
+      </div>
+      <div>
+        <h2 class="modal__title" id="modal-title">RPF Alert Dispatch</h2>
+        <p class="modal__subtitle">Review and acknowledge threat before notifying Railway Protection Force</p>
+      </div>
+      <button class="modal__close" onclick="closeModal()" aria-label="Close modal">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <div class="modal__body">
+      <!-- Threat summary -->
+      <div class="modal-section">
+        <h3 class="modal-section__title">Threat Summary</h3>
+        <div class="modal-grid">
+          <div class="modal-field">
+            <label>Alert ID</label>
+            <span class="modal-value mono" id="m-alert-id">—</span>
+          </div>
+          <div class="modal-field">
+            <label>Object ID</label>
+            <span class="modal-value mono" id="m-obj-id">—</span>
+          </div>
+          <div class="modal-field">
+            <label>Status</label>
+            <span class="modal-value" id="m-status">—</span>
+          </div>
+          <div class="modal-field">
+            <label>Confidence</label>
+            <span class="modal-value" id="m-confidence">—</span>
+          </div>
+          <div class="modal-field modal-field--full">
+            <label>Location</label>
+            <span class="modal-value" id="m-location">—</span>
+          </div>
+          <div class="modal-field">
+            <label>Camera</label>
+            <span class="modal-value mono" id="m-camera">—</span>
+          </div>
+          <div class="modal-field">
+            <label>Timestamp</label>
+            <span class="modal-value mono" id="m-timestamp">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Raman results -->
+      <div class="modal-section" id="m-raman-section">
+        <h3 class="modal-section__title">
+          <i class="fa-solid fa-flask-vial"></i> Raman Spectrometer Result
+        </h3>
+        <div class="modal-raman" id="m-raman-body">
+          <div class="modal-raman__substance" id="m-raman-substance">—</div>
+          <div class="modal-raman__pills">
+            <span class="pill pill--category" id="m-raman-category">—</span>
+            <span class="pill pill--risk"     id="m-raman-risk">Risk: —</span>
+            <span class="pill pill--conf"     id="m-raman-conf">Conf: —</span>
+          </div>
+          <p class="modal-raman__desc" id="m-raman-desc">—</p>
+          <div class="modal-raman__peaks">
+            <span class="peaks-label">Detected peaks (cm⁻¹):</span>
+            <span class="peaks-val" id="m-raman-peaks">—</span>
+          </div>
+          <div class="modal-raman__meta">
+            <span>SNR: <b id="m-raman-snr">—</b> dB</span>
+            <span>Scan time: <b id="m-raman-scan-time">—</b> ms</span>
+          </div>
+        </div>
+        <div class="modal-raman modal-raman--clear" id="m-raman-empty" hidden>
+          <i class="fa-solid fa-circle-info"></i>
+          Raman scan not yet performed for this object.
+        </div>
+      </div>
+
+      <!-- RPF message preview -->
+      <div class="modal-section">
+        <h3 class="modal-section__title">
+          <i class="fa-solid fa-walkie-talkie"></i> RPF Dispatch Message
+        </h3>
+        <div class="rpf-message" id="rpf-message-preview">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </div>
+
+    <div class="modal__footer">
+      <button class="btn btn--ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn--warn" onclick="acknowledgeFromModal()">
+        <i class="fa-solid fa-check-double"></i> Acknowledge &amp; Notify RPF
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TOAST NOTIFICATIONS
+═══════════════════════════════════════════════════════════════════════════ -->
+<div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+
+<!-- Dashboard JS -->
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>
